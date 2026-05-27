@@ -6,53 +6,55 @@ import re
 from pypdf import PdfReader, PdfWriter
 
 # ============================================================
-# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
-# ============================================================
-# ============================================================
-# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
+# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK (CORES DO SEU TOML)
 # ============================================================
 st.set_page_config(page_title="Conferência de GNREs", page_icon="📋", layout="centered")
 
 st.markdown("""
     <style>
-    /* Fundo geral e textos */
-    .stApp { background-color: #121212; color: #E0E0E0; }
-    h1, h2, h3 { color: #FFFFFF !important; }
+    /* Fundo geral do site (backgroundColor="#0d0e12") */
+    .stApp { 
+        background-color: #0d0e12 !important; 
+        color: #ffffff !important; 
+    }
     
-    /* Botões padrão */
+    /* Forçar todos os textos e títulos para branco (textColor="#ffffff") */
+    h1, h2, h3, h4, p, span, label, div { 
+        color: #ffffff !important; 
+    }
+    
+    /* Botões padrão (Fundo #1e2029 e texto com a sua primaryColor="#00ffcc") */
     .stButton>button { 
-        background-color: #1E1E1E !important; 
-        color: #00FF66 !important; 
+        background-color: #1e2029 !important; 
+        color: #00ffcc !important; 
         border: 1px solid #333333 !important; 
     }
     .stButton>button:hover { 
-        background-color: #2D2D2D !important; 
-        border: 1px solid #00FF66 !important; 
+        background-color: #2a2d3a !important; 
+        border: 1px solid #00ffcc !important; 
     }
     
-    /* CAIXAS DE UPLOAD MELHORADAS */
-    /* Fundo mais claro, borda tracejada visível e arredondamento */
+    /* CAIXAS DE UPLOAD (Fundo secondaryBackgroundColor="#1e2029" e borda "#00ffcc") */
     section[data-testid="stFileUploadDropzone"] {
-        background-color: #1E2029 !important; 
-        border: 2px dashed #00FF66 !important; 
+        background-color: #1e2029 !important; 
+        border: 2px dashed #00ffcc !important; 
         border-radius: 8px;
         padding: 20px;
     }
-    /* Efeito ao passar o mouse ou arrastar o arquivo por cima */
     section[data-testid="stFileUploadDropzone"]:hover {
-        background-color: #2A2D3A !important;
-        border: 2px dashed #00FFAA !important;
+        background-color: #2a2d3a !important;
+        border: 2px dashed #00ffcc !important;
     }
     
-    /* Campos de texto (login) */
+    /* Campos de texto do Login (Fundo #1e2029) */
     .stTextInput>div>div>input { 
-        background-color: #1A1A1A !important; 
-        color: #FFFFFF !important; 
+        background-color: #1e2029 !important; 
+        color: #ffffff !important; 
         border: 1px solid #444444 !important; 
     }
     
-    /* Spinner de carregamento */
-    .stSpinner > div { border-top-color: #00FF66 !important; }
+    /* Ícone de carregamento/Spinner (primaryColor="#00ffcc") */
+    .stSpinner > div { border-top-color: #00ffcc !important; }
     </style>
 """, unsafe_allow_html=True)
 
