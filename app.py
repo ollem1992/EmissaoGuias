@@ -8,16 +8,50 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 # 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
 # ============================================================
+# ============================================================
+# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
+# ============================================================
 st.set_page_config(page_title="Conferência de GNREs", page_icon="📋", layout="centered")
 
 st.markdown("""
     <style>
+    /* Fundo geral e textos */
     .stApp { background-color: #121212; color: #E0E0E0; }
     h1, h2, h3 { color: #FFFFFF !important; }
-    .stButton>button { background-color: #1E1E1E !important; color: #00FF66 !important; border: 1px solid #333333 !important; }
-    .stButton>button:hover { background-color: #2D2D2D !important; border: 1px solid #00FF66 !important; }
-    .stFileUploader { background-color: #1A1A1A; padding: 10px; border-radius: 5px; border: 1px dashed #444444; }
-    .stTextInput>div>div>input { background-color: #1A1A1A !important; color: #FFFFFF !important; border: 1px solid #444444 !important; }
+    
+    /* Botões padrão */
+    .stButton>button { 
+        background-color: #1E1E1E !important; 
+        color: #00FF66 !important; 
+        border: 1px solid #333333 !important; 
+    }
+    .stButton>button:hover { 
+        background-color: #2D2D2D !important; 
+        border: 1px solid #00FF66 !important; 
+    }
+    
+    /* CAIXAS DE UPLOAD MELHORADAS */
+    /* Fundo mais claro, borda tracejada visível e arredondamento */
+    section[data-testid="stFileUploadDropzone"] {
+        background-color: #1E2029 !important; 
+        border: 2px dashed #00FF66 !important; 
+        border-radius: 8px;
+        padding: 20px;
+    }
+    /* Efeito ao passar o mouse ou arrastar o arquivo por cima */
+    section[data-testid="stFileUploadDropzone"]:hover {
+        background-color: #2A2D3A !important;
+        border: 2px dashed #00FFAA !important;
+    }
+    
+    /* Campos de texto (login) */
+    .stTextInput>div>div>input { 
+        background-color: #1A1A1A !important; 
+        color: #FFFFFF !important; 
+        border: 1px solid #444444 !important; 
+    }
+    
+    /* Spinner de carregamento */
     .stSpinner > div { border-top-color: #00FF66 !important; }
     </style>
 """, unsafe_allow_html=True)
