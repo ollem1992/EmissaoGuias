@@ -122,17 +122,16 @@ def limpar_valor_excel(v):
 # ============================================================
 # 🖥️ INTERFACE PRINCIPAL
 # ============================================================
-st.title("📋 Conferência de GNREs (Fiscal)")
-if st.button("🚪 Encerrar Sessão (Sair)"):
-    st.session_state.autenticado = False
-    st.rerun()
-
 st.write("---")
 
 pdf_upload = st.file_uploader("1. Selecione o PDF Bruto de Guias (.pdf)", type=["pdf"])
 planilha_upload = st.file_uploader("2. Selecione a Planilha Excel (.xlsx)", type=["xlsx"])
 
 st.write("---")
+
+# 1. Cria a "memória" para o site não esquecer os arquivos após o primeiro download
+if "processo_concluido" not in st.session_state:
+    st.session_state.processo_concluido = False
 
 if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True):
     if not planilha_upload or not pdf_upload:
@@ -143,7 +142,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             pdf_bytes = pdf_upload.read()
             excel_bytes = planilha_upload.read()
             
-            # --- EXTRAÇÃO DO PDF (Da Célula 5) ---
+            # --- EXTRAÇÃO DO PDF ---
             resultados_pdf = []
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for i, page in enumerate(pdf.pages):
@@ -191,7 +190,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             df_pdf = pd.DataFrame(resultados_pdf)
             total_pdf = df_pdf['Total a Recolher (R$)'].sum()
 
-            # --- LEITURA DO EXCEL (Da Célula 6) ---
+            # --- LEITURA DO EXCEL ---
             try:
                 df_excel = pd.read_excel(io.BytesIO(excel_bytes), sheet_name=SHEET_NAME)
             except Exception as e:
@@ -220,7 +219,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             df['_banco']  = df['_uf'].apply(classificar_banco)
             total_excel = df['_valor_total'].sum()
 
-            # --- SEPARAÇÃO DE PDFs (Da Célula 8) ---
+            # --- SEPARAÇÃO DE PDFs ---
             guias_disponiveis = [{'uf': i['UF'], 'valor': i['Total a Recolher (R$)'], 'pagina': i['Página'] - 1, 'usada': False} for i in resultados_pdf]
 
             def encontrar_e_marcar_pagina(uf, valor_alvo, tolerancia=0.02):
@@ -260,51 +259,64 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 writer_itau = PdfWriter()
                 for pag in paginas_itau_arquivo: writer_itau.add_page(reader.pages[pag])
                 writer_itau.write(pdf_itau_bytes)
-                pdf_itau_bytes.seek(0)
                 
             pdf_imp_bytes = io.BytesIO()
             if paginas_impressao:
                 writer_imp = PdfWriter()
                 for pag in paginas_impressao: writer_imp.add_page(reader.pages[pag])
                 writer_imp.write(pdf_imp_bytes)
-                pdf_imp_bytes.seek(0)
 
-            # --- RESULTADOS EM TELA (Da Célula 7) ---
-            st.subheader("📊 Resumo da Conferência")
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total PDF (GNREs)", f"R$ {total_pdf:,.2f}")
-            col2.metric("Total Excel", f"R$ {total_excel:,.2f}")
-            
-            diferenca = total_pdf - total_excel
-            if abs(diferenca) < 0.02:
-                col3.metric("Divergência", "✅ OK", delta_color="off")
-                st.success("Os valores batem perfeitamente!")
-            else:
-                col3.metric("Divergência", f"R$ {diferenca:,.2f}", delta_color="inverse")
-                st.error("Divergência encontrada entre PDF e Planilha.")
+            # 2. SALVANDO NA MEMÓRIA DO STREAMLIT (.getvalue() extrai os bytes crus)
+            st.session_state.pdf_itau = pdf_itau_bytes.getvalue() if paginas_itau_arquivo else None
+            st.session_state.pdf_imp = pdf_imp_bytes.getvalue() if paginas_impressao else None
+            st.session_state.qtd_itau = len(paginas_itau_arquivo)
+            st.session_state.qtd_imp = len(paginas_impressao)
+            st.session_state.total_pdf = total_pdf
+            st.session_state.total_excel = total_excel
+            st.session_state.processo_concluido = True
 
-            st.write("---")
-            
-            # Botões de Download
-            col_btn1, col_btn2 = st.columns(2)
-            if paginas_itau_arquivo:
-                col_btn1.download_button(
-                    label=f"📥 BAIXAR GUIAS ITAÚ ({len(paginas_itau_arquivo)} pág)", 
-                    data=pdf_itau_bytes, 
-                    file_name="guias_itau_arquivo.pdf", 
-                    mime="application/pdf", 
-                    use_container_width=True
-                )
-            else:
-                col_btn1.info("Nenhuma guia Itaú Arquivo neste lote.")
 
-            if paginas_impressao:
-                col_btn2.download_button(
-                    label=f"📥 BAIXAR GUIAS FÍSICAS ({len(paginas_impressao)} pág)", 
-                    data=pdf_imp_bytes, 
-                    file_name="guias_impressao_fisica.pdf", 
-                    mime="application/pdf", 
-                    use_container_width=True
-                )
-            else:
-                col_btn2.info("Nenhuma guia de Impressão Física neste lote.")
+# ============================================================
+# 3. ÁREA DE EXIBIÇÃO (FORA DO BOTÃO INICIAR)
+# ============================================================
+if st.session_state.processo_concluido:
+    st.write("---")
+    st.subheader("📊 Resumo da Conferência")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total PDF (GNREs)", f"R$ {st.session_state.total_pdf:,.2f}")
+    col2.metric("Total Excel", f"R$ {st.session_state.total_excel:,.2f}")
+    
+    diferenca = st.session_state.total_pdf - st.session_state.total_excel
+    if abs(diferenca) < 0.02:
+        col3.metric("Divergência", "✅ OK", delta_color="off")
+        st.success("Os valores batem perfeitamente!")
+    else:
+        col3.metric("Divergência", f"R$ {diferenca:,.2f}", delta_color="inverse")
+        st.error("Divergência encontrada entre PDF e Planilha.")
+
+    st.write("---")
+    
+    # Botões de Download puxando os arquivos guardados na memória
+    col_btn1, col_btn2 = st.columns(2)
+    
+    if st.session_state.qtd_itau > 0:
+        col_btn1.download_button(
+            label=f"📥 BAIXAR GUIAS ITAÚ ({st.session_state.qtd_itau} pág)", 
+            data=st.session_state.pdf_itau, 
+            file_name="guias_itau_arquivo.pdf", 
+            mime="application/pdf", 
+            use_container_width=True
+        )
+    else:
+        col_btn1.info("Nenhuma guia Itaú Arquivo neste lote.")
+
+    if st.session_state.qtd_imp > 0:
+        col_btn2.download_button(
+            label=f"📥 BAIXAR GUIAS FÍSICAS ({st.session_state.qtd_imp} pág)", 
+            data=st.session_state.pdf_imp, 
+            file_name="guias_impressao_fisica.pdf", 
+            mime="application/pdf", 
+            use_container_width=True
+        )
+    else:
+        col_btn2.info("Nenhuma guia de Impressão Física neste lote.")
