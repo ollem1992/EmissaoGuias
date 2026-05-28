@@ -122,6 +122,12 @@ def limpar_valor_excel(v):
 # ============================================================
 # 🖥️ INTERFACE PRINCIPAL
 # ============================================================
+st.title("📋 Conferência de GNREs (Fiscal)")
+
+if st.button("🚪 Encerrar Sessão (Sair)"):
+    st.session_state.autenticado = False
+    st.rerun()
+
 st.write("---")
 
 pdf_upload = st.file_uploader("1. Selecione o PDF Bruto de Guias (.pdf)", type=["pdf"])
