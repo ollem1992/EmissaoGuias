@@ -6,54 +6,19 @@ import re
 from pypdf import PdfReader, PdfWriter
 
 # ============================================================
-# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK (CORES DO SEU TOML)
+# 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
 # ============================================================
 st.set_page_config(page_title="Conferência de GNREs", page_icon="📋", layout="centered")
 
 st.markdown("""
     <style>
-    /* Fundo geral do site (backgroundColor="#0d0e12") */
-    .stApp { 
-        background-color: #0d0e12 !important; 
-        color: #ffffff !important; 
-    }
-    
-    /* Forçar todos os textos e títulos para branco (textColor="#ffffff") */
-    h1, h2, h3, h4, p, span, label, div { 
-        color: #ffffff !important; 
-    }
-    
-    /* Botões padrão (Fundo #1e2029 e texto com a sua primaryColor="#00ffcc") */
-    .stButton>button { 
-        background-color: #1e2029 !important; 
-        color: #00ffcc !important; 
-        border: 1px solid #333333 !important; 
-    }
-    .stButton>button:hover { 
-        background-color: #2a2d3a !important; 
-        border: 1px solid #00ffcc !important; 
-    }
-    
-    /* CAIXAS DE UPLOAD (Fundo secondaryBackgroundColor="#1e2029" e borda "#00ffcc") */
-    section[data-testid="stFileUploadDropzone"] {
-        background-color: #1e2029 !important; 
-        border: 2px dashed #00ffcc !important; 
-        border-radius: 8px;
-        padding: 20px;
-    }
-    section[data-testid="stFileUploadDropzone"]:hover {
-        background-color: #2a2d3a !important;
-        border: 2px dashed #00ffcc !important;
-    }
-    
-    /* Campos de texto do Login (Fundo #1e2029) */
-    .stTextInput>div>div>input { 
-        background-color: #1e2029 !important; 
-        color: #ffffff !important; 
-        border: 1px solid #444444 !important; 
-    }
-    
-    /* Ícone de carregamento/Spinner (primaryColor="#00ffcc") */
+    .stApp { background-color: #0d0e12 !important; color: #ffffff !important; }
+    h1, h2, h3, h4, p, span, label, div { color: #ffffff !important; }
+    .stButton>button { background-color: #1e2029 !important; color: #00ffcc !important; border: 1px solid #333333 !important; }
+    .stButton>button:hover { background-color: #2a2d3a !important; border: 1px solid #00ffcc !important; }
+    section[data-testid="stFileUploadDropzone"] { background-color: #1e2029 !important; border: 2px dashed #00ffcc !important; border-radius: 8px; padding: 20px; }
+    section[data-testid="stFileUploadDropzone"]:hover { background-color: #2a2d3a !important; border: 2px dashed #00ffcc !important; }
+    .stTextInput>div>div>input { background-color: #1e2029 !important; color: #ffffff !important; border: 1px solid #444444 !important; }
     .stSpinner > div { border-top-color: #00ffcc !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -80,7 +45,7 @@ if not st.session_state.autenticado:
     st.stop()
 
 # ============================================================
-# ⚙️ CONFIGURAÇÕES FISCAIS FIXAS (Da Célula 3)
+# ⚙️ CONFIGURAÇÕES FISCAIS FIXAS
 # ============================================================
 COLUNA_NOTA   = 'Nº NOTA'
 COLUNA_UF     = 'UF'
@@ -96,17 +61,15 @@ ENTREGA_FISICA = {'AC', 'ES', 'MS', 'PI', 'SP'}
 
 def classificar_banco(uf):
     uf = str(uf).strip().upper()
-    if uf in BANCO_BRASIL:  return 'Banco do Brasil'
-    if uf in BRADESCO:      return 'Bradesco'
-    if uf in ITAU_ARQUIVO:  return 'Itaú (arquivo)'
+    if uf in BANCO_BRASIL: return 'Banco do Brasil'
+    if uf in BRADESCO: return 'Bradesco'
+    if uf in ITAU_ARQUIVO: return 'Itaú (arquivo)'
     return 'Não mapeado'
 
 def limpar_valor_pdf(texto_valor):
     v = texto_valor.strip().replace('R$', '').replace(' ', '').replace('\xa0', '')
-    if ',' in v and '.' in v:
-        v = v.replace('.', '').replace(',', '.')
-    elif ',' in v:
-        v = v.replace(',', '.')
+    if ',' in v and '.' in v: v = v.replace('.', '').replace(',', '.')
+    elif ',' in v: v = v.replace(',', '.')
     return float(v)
 
 def limpar_valor_excel(v):
@@ -135,7 +98,9 @@ planilha_upload = st.file_uploader("2. Selecione a Planilha Excel (.xlsx)", type
 
 st.write("---")
 
-# 1. Cria a "memória" para o site não esquecer os arquivos após o primeiro download
+# ESTRATÉGIA 3: O BOTÃO DE MODO ANALISTA / LOTE ATRASADO
+lote_atrasado = st.checkbox("⚠️ Lote Atrasado / Feriado (Ativa o 'Modo Analista' para descobrir juros automaticamente)", value=False)
+
 if "processo_concluido" not in st.session_state:
     st.session_state.processo_concluido = False
 
@@ -143,7 +108,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
     if not planilha_upload or not pdf_upload:
         st.error("❌ Erro: Carregue a planilha e o PDF antes de rodar.")
     else:
-        with st.spinner("⚡ Lendo PDF e cruzando dados com a Planilha..."):
+        with st.spinner("⚡ Lendo PDF e ativando robô de conferência..."):
             
             pdf_bytes = pdf_upload.read()
             excel_bytes = planilha_upload.read()
@@ -185,16 +150,11 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                         if m_doc_dua: doc = m_doc_dua.group(1)
 
                     if valor is not None:
-                        resultados_pdf.append({
-                            'Página': i + 1, 'UF': uf, 'Nº Nota': doc, 'Total a Recolher (R$)': valor
-                        })
+                        resultados_pdf.append({'Página': i + 1, 'UF': uf, 'Nº Nota': doc, 'Total a Recolher (R$)': valor})
 
             if not resultados_pdf:
                 st.error("❌ Nenhum valor encontrado no PDF.")
                 st.stop()
-
-            df_pdf = pd.DataFrame(resultados_pdf)
-            total_pdf = df_pdf['Total a Recolher (R$)'].sum()
 
             # --- LEITURA DO EXCEL ---
             try:
@@ -222,42 +182,86 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             df = df_excel[df_excel['_nota_valida'] & df_excel['_valor_valido']].copy()
 
             df['_uf']     = df[COLUNA_UF].astype(str).str.strip().str.upper()
-            df['_banco']  = df['_uf'].apply(classificar_banco)
-            total_excel = df['_valor_total'].sum()
-
-            # --- SEPARAÇÃO DE PDFs ---
-            guias_disponiveis = [{'uf': i['UF'], 'valor': i['Total a Recolher (R$)'], 'pagina': i['Página'] - 1, 'usada': False} for i in resultados_pdf]
-
-            def encontrar_e_marcar_pagina(uf, valor_alvo, tolerancia=0.02):
-                for guia in guias_disponiveis:
-                    if not guia['usada'] and guia['uf'] == uf and abs(guia['valor'] - valor_alvo) <= tolerancia:
-                        guia['usada'] = True
-                        return guia['pagina']
-                return None
+            df['_nota_str'] = df[COLUNA_NOTA].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
+            
+            # --- O "BEM BOLADO" (ESTRATÉGIAS 1, 2 E 3 INTEGRADAS) ---
+            guias_disponiveis = []
+            for i in resultados_pdf:
+                nota_pdf = str(i['Nº Nota']).strip().lstrip('0') if i['Nº Nota'] else ''
+                guias_disponiveis.append({
+                    'uf': i['UF'], 'nota': nota_pdf, 'valor': i['Total a Recolher (R$)'], 
+                    'pagina': i['Página'] - 1, 'usada': False
+                })
 
             paginas_itau_arquivo = []
             paginas_impressao = []
+            relatorio_juros = []  # Aqui nós armazenaremos os juros descobertos (Estratégia 2)
+
+            # Função inteligente que roda todas as estratégias em cascata
+            def buscar_guia_inteligente(nota_alvo, uf_alvo, valor_alvo, permite_atraso):
+                # Estratégia 1: Confiança máxima (Nota + Valor bate exatamente)
+                for g in guias_disponiveis:
+                    if not g['usada'] and g['nota'] == nota_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
+                        g['usada'] = True; return g['pagina'], 0.0
+                
+                # Estratégia 2: Descobre os Juros pelo Nº da Nota (Se o valor do PDF for maior)
+                for g in guias_disponiveis:
+                    if not g['usada'] and g['nota'] == nota_alvo and g['valor'] > valor_alvo + 0.02:
+                        juros = g['valor'] - valor_alvo
+                        g['usada'] = True; return g['pagina'], juros
+                
+                # Regra Padrão Fallback: Só UF + Valor exato (para guias sem número de nota lido)
+                for g in guias_disponiveis:
+                    if not g['usada'] and g['uf'] == uf_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
+                        g['usada'] = True; return g['pagina'], 0.0
+                
+                # Estratégia 3: O Modo Feriado! (Tenta achar pela UF com limite de até 20% de juros)
+                if permite_atraso:
+                    for g in guias_disponiveis:
+                        if not g['usada'] and g['uf'] == uf_alvo and (valor_alvo - 0.02) <= g['valor'] <= (valor_alvo * 1.20):
+                            juros = g['valor'] - valor_alvo
+                            g['usada'] = True; return g['pagina'], juros
+                
+                return None, 0.0
+
+            # Executa a busca inteligente para cada linha do Excel
+            total_excel_base = 0.0
+            total_pdf_pago = 0.0
 
             for idx, row in df.iterrows():
                 uf, v_total, v1, v2, jr = row['_uf'], row['_valor_total'], row['_v1'], row['_v2'], row['_jr']
+                nota_excel = row['_nota_str']
+                total_excel_base += v_total
                 
-                pag_total = encontrar_e_marcar_pagina(uf, v_total)
+                # Tenta casar o Total primeiro
+                pag_total, juros_total = buscar_guia_inteligente(nota_excel, uf, v_total, lote_atrasado)
                 if pag_total is not None:
                     if uf in ENTREGA_FISICA: paginas_impressao.append(pag_total)
                     elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_total)
-                    continue
                     
+                    total_pdf_pago += (v_total + juros_total)
+                    if juros_total > 0.02:
+                        relatorio_juros.append({"Nota": nota_excel, "UF": uf, "Valor Base": v_total, "Total Pago": v_total + juros_total, "Juros/Multa SEFAZ": juros_total})
+                    continue
+                
+                # Se não achou unificado e tem V2, tenta achar desmembrado (RJ, AL)
                 if v2 > 0:
-                    pag_v1 = encontrar_e_marcar_pagina(uf, v1 + jr)
-                    pag_v2 = encontrar_e_marcar_pagina(uf, v2)
+                    pag_v1, juros1 = buscar_guia_inteligente(nota_excel, uf, v1 + jr, lote_atrasado)
+                    pag_v2, juros2 = buscar_guia_inteligente(nota_excel, uf, v2, lote_atrasado)
+                    
                     if pag_v1 is not None:
                         if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v1)
                         elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v1)
+                        total_pdf_pago += (v1 + jr + juros1)
+                        if juros1 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 1)", "UF": uf, "Valor Base": v1+jr, "Total Pago": v1+jr+juros1, "Juros/Multa SEFAZ": juros1})
+                            
                     if pag_v2 is not None:
                         if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v2)
                         elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v2)
+                        total_pdf_pago += (v2 + juros2)
+                        if juros2 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 2)", "UF": uf, "Valor Base": v2, "Total Pago": v2+juros2, "Juros/Multa SEFAZ": juros2})
 
-            # Geração dos arquivos em memória
+            # --- GERAÇÃO DOS ARQUIVOS NA MEMÓRIA ---
             reader = PdfReader(io.BytesIO(pdf_bytes))
             
             pdf_itau_bytes = io.BytesIO()
@@ -272,37 +276,52 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 for pag in paginas_impressao: writer_imp.add_page(reader.pages[pag])
                 writer_imp.write(pdf_imp_bytes)
 
-            # 2. SALVANDO NA MEMÓRIA DO STREAMLIT (.getvalue() extrai os bytes crus)
+            # SALVA DADOS NO CACHE DO SITE
             st.session_state.pdf_itau = pdf_itau_bytes.getvalue() if paginas_itau_arquivo else None
             st.session_state.pdf_imp = pdf_imp_bytes.getvalue() if paginas_impressao else None
             st.session_state.qtd_itau = len(paginas_itau_arquivo)
             st.session_state.qtd_imp = len(paginas_impressao)
-            st.session_state.total_pdf = total_pdf
-            st.session_state.total_excel = total_excel
+            
+            st.session_state.total_excel_base = total_excel_base
+            st.session_state.total_pdf_pago = total_pdf_pago
+            st.session_state.relatorio_juros = relatorio_juros
+            
             st.session_state.processo_concluido = True
 
 
 # ============================================================
-# 3. ÁREA DE EXIBIÇÃO (FORA DO BOTÃO INICIAR)
+# 3. ÁREA DE EXIBIÇÃO / RELATÓRIOS
 # ============================================================
 if st.session_state.processo_concluido:
     st.write("---")
-    st.subheader("📊 Resumo da Conferência")
+    st.subheader("📊 Resumo Financeiro da Conferência")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total PDF (GNREs)", f"R$ {st.session_state.total_pdf:,.2f}")
-    col2.metric("Total Excel", f"R$ {st.session_state.total_excel:,.2f}")
     
-    diferenca = st.session_state.total_pdf - st.session_state.total_excel
+    col1.metric("Total Base (Planilha)", f"R$ {st.session_state.total_excel_base:,.2f}")
+    col2.metric("Total Final Pago (PDF)", f"R$ {st.session_state.total_pdf_pago:,.2f}")
+    
+    diferenca = st.session_state.total_pdf_pago - st.session_state.total_excel_base
     if abs(diferenca) < 0.02:
-        col3.metric("Divergência", "✅ OK", delta_color="off")
-        st.success("Os valores batem perfeitamente!")
+        col3.metric("Juros/Acréscimos", "R$ 0,00", delta_color="off")
+        st.success("✅ Perfeito! Todos os valores do PDF bateram exatamente com a planilha base.")
     else:
-        col3.metric("Divergência", f"R$ {diferenca:,.2f}", delta_color="inverse")
-        st.error("Divergência encontrada entre PDF e Planilha.")
+        col3.metric("Juros/Acréscimos", f"+ R$ {diferenca:,.2f}", delta_color="inverse")
+    
+    # ESTRATÉGIA 2: EXIBIÇÃO DA TABELA DE JUROS DESCOBERTOS
+    if len(st.session_state.relatorio_juros) > 0:
+        st.warning("⚠️ **ATENÇÃO:** O sistema identificou guias com acréscimos/juros cobrados pela SEFAZ:")
+        df_juros_report = pd.DataFrame(st.session_state.relatorio_juros)
+        
+        # Formatação visual de moeda na tabela
+        st.dataframe(df_juros_report.style.format({
+            "Valor Base": "R$ {:.2f}",
+            "Total Pago": "R$ {:.2f}",
+            "Juros/Multa SEFAZ": "R$ {:.2f}"
+        }), use_container_width=True)
 
     st.write("---")
+    st.subheader("🗂️ Download dos Lotes Separados")
     
-    # Botões de Download puxando os arquivos guardados na memória
     col_btn1, col_btn2 = st.columns(2)
     
     if st.session_state.qtd_itau > 0:
