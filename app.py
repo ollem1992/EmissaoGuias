@@ -113,7 +113,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             pdf_bytes = pdf_upload.read()
             excel_bytes = planilha_upload.read()
             
-# --- EXTRAÇÃO DO PDF ---
+            # --- EXTRAÇÃO DO PDF ---
             resultados_pdf = []
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for i, page in enumerate(pdf.pages):
@@ -135,20 +135,20 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                     # Padrão SP (DARE-SP)
                     elif re.search(r'DARE-SP', texto, re.IGNORECASE) or re.search(r'S[ãa]o\s*Paulo', texto, re.IGNORECASE):
                         uf = 'SP'
-                        m_val_dare = re.search(r'Valor\s*Total[^\d]*?([\d.,]+)', texto, re.IGNORECASE | re.DOTALL)
-                        if m_val_dare:
-                            try: valor = limpar_valor_pdf(m_val_dare.group(1))
-                            except ValueError: pass
-                        if valor is None:
-                            valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
-                            valores_float = []
-                            for v in valores_encontrados:
-                                try: valores_float.append(limpar_valor_pdf(v))
-                                except: pass
-                            if valores_float: valor = max(valores_float)
+                        
+                        # Para o DARE, a extração de texto pode misturar as colunas.
+                        # A forma segura é caçar todos os "R$ X,XX" da página e pegar o maior (que já embute os juros/multa).
+                        valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
+                        valores_float = []
+                        for v in valores_encontrados:
+                            try: valores_float.append(limpar_valor_pdf(v))
+                            except: pass
+                        if valores_float: 
+                            valor = max(valores_float)
+                            
                         m_doc_dare = re.search(r'NFe?\s*[nN]?[ºo°]?\s*[:]?\s*(\d+)', texto, re.IGNORECASE)
                         if m_doc_dare: doc = m_doc_dare.group(1)
-
+                    
                     # Padrão ES (DUA)
                     elif re.search(r'Esp[íi]rito\s*Santo', texto, re.IGNORECASE) or re.search(r'Documento\s*[UÚuú]nico', texto, re.IGNORECASE):
                         uf = 'ES'
@@ -168,6 +168,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
 
                     if valor is not None:
                         resultados_pdf.append({'Página': i + 1, 'UF': uf, 'Nº Nota': doc, 'Total a Recolher (R$)': valor})
+
             if not resultados_pdf:
                 st.error("❌ Nenhum valor encontrado no PDF.")
                 st.stop()
@@ -211,27 +212,22 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
 
             paginas_itau_arquivo = []
             paginas_impressao = []
-            relatorio_juros = []  # Aqui nós armazenaremos os juros descobertos (Estratégia 2)
+            relatorio_juros = []
 
-            # Função inteligente que roda todas as estratégias em cascata
             def buscar_guia_inteligente(nota_alvo, uf_alvo, valor_alvo, permite_atraso):
-                # Estratégia 1: Confiança máxima (Nota + Valor bate exatamente)
                 for g in guias_disponiveis:
                     if not g['usada'] and g['nota'] == nota_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
                         g['usada'] = True; return g['pagina'], 0.0
                 
-                # Estratégia 2: Descobre os Juros pelo Nº da Nota (Se o valor do PDF for maior)
                 for g in guias_disponiveis:
                     if not g['usada'] and g['nota'] == nota_alvo and g['valor'] > valor_alvo + 0.02:
                         juros = g['valor'] - valor_alvo
                         g['usada'] = True; return g['pagina'], juros
                 
-                # Regra Padrão Fallback: Só UF + Valor exato (para guias sem número de nota lido)
                 for g in guias_disponiveis:
                     if not g['usada'] and g['uf'] == uf_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
                         g['usada'] = True; return g['pagina'], 0.0
                 
-                # Estratégia 3: O Modo Feriado! (Tenta achar pela UF com limite de até 20% de juros)
                 if permite_atraso:
                     for g in guias_disponiveis:
                         if not g['usada'] and g['uf'] == uf_alvo and (valor_alvo - 0.02) <= g['valor'] <= (valor_alvo * 1.20):
@@ -240,7 +236,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 
                 return None, 0.0
 
-            # Executa a busca inteligente para cada linha do Excel
             total_excel_base = 0.0
             total_pdf_pago = 0.0
 
@@ -249,7 +244,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 nota_excel = row['_nota_str']
                 total_excel_base += v_total
                 
-                # Tenta casar o Total primeiro
                 pag_total, juros_total = buscar_guia_inteligente(nota_excel, uf, v_total, lote_atrasado)
                 if pag_total is not None:
                     if uf in ENTREGA_FISICA: paginas_impressao.append(pag_total)
@@ -260,7 +254,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                         relatorio_juros.append({"Nota": nota_excel, "UF": uf, "Valor Base": v_total, "Total Pago": v_total + juros_total, "Juros/Multa SEFAZ": juros_total})
                     continue
                 
-                # Se não achou unificado e tem V2, tenta achar desmembrado (RJ, AL)
                 if v2 > 0:
                     pag_v1, juros1 = buscar_guia_inteligente(nota_excel, uf, v1 + jr, lote_atrasado)
                     pag_v2, juros2 = buscar_guia_inteligente(nota_excel, uf, v2, lote_atrasado)
@@ -292,7 +285,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 for pag in paginas_impressao: writer_imp.add_page(reader.pages[pag])
                 writer_imp.write(pdf_imp_bytes)
 
-            # SALVA DADOS NO CACHE DO SITE
             st.session_state.pdf_itau = pdf_itau_bytes.getvalue() if paginas_itau_arquivo else None
             st.session_state.pdf_imp = pdf_imp_bytes.getvalue() if paginas_impressao else None
             st.session_state.qtd_itau = len(paginas_itau_arquivo)
@@ -323,12 +315,10 @@ if st.session_state.processo_concluido:
     else:
         col3.metric("Juros/Acréscimos", f"+ R$ {diferenca:,.2f}", delta_color="inverse")
     
-    # ESTRATÉGIA 2: EXIBIÇÃO DA TABELA DE JUROS DESCOBERTOS
     if len(st.session_state.relatorio_juros) > 0:
         st.warning("⚠️ **ATENÇÃO:** O sistema identificou guias com acréscimos/juros cobrados pela SEFAZ:")
         df_juros_report = pd.DataFrame(st.session_state.relatorio_juros)
         
-        # Formatação visual de moeda na tabela
         st.dataframe(df_juros_report.style.format({
             "Valor Base": "R$ {:.2f}",
             "Total Pago": "R$ {:.2f}",
