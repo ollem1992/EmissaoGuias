@@ -113,7 +113,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             pdf_bytes = pdf_upload.read()
             excel_bytes = planilha_upload.read()
             
-            # --- EXTRAÇÃO DO PDF ---
+# --- EXTRAÇÃO DO PDF ---
             resultados_pdf = []
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for i, page in enumerate(pdf.pages):
@@ -132,6 +132,23 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                         m_doc = re.search(r'N[ºo°]\s+Documento\s+de\s+Origem\n[^\n]+?(\d{5,})\s*$', texto, re.MULTILINE)
                         if m_doc: doc = m_doc.group(1).lstrip('0')
                     
+                    # Padrão SP (DARE-SP)
+                    elif re.search(r'DARE-SP', texto, re.IGNORECASE) or re.search(r'S[ãa]o\s*Paulo', texto, re.IGNORECASE):
+                        uf = 'SP'
+                        m_val_dare = re.search(r'Valor\s*Total[^\d]*?([\d.,]+)', texto, re.IGNORECASE | re.DOTALL)
+                        if m_val_dare:
+                            try: valor = limpar_valor_pdf(m_val_dare.group(1))
+                            except ValueError: pass
+                        if valor is None:
+                            valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
+                            valores_float = []
+                            for v in valores_encontrados:
+                                try: valores_float.append(limpar_valor_pdf(v))
+                                except: pass
+                            if valores_float: valor = max(valores_float)
+                        m_doc_dare = re.search(r'NFe?\s*[nN]?[ºo°]?\s*[:]?\s*(\d+)', texto, re.IGNORECASE)
+                        if m_doc_dare: doc = m_doc_dare.group(1)
+
                     # Padrão ES (DUA)
                     elif re.search(r'Esp[íi]rito\s*Santo', texto, re.IGNORECASE) or re.search(r'Documento\s*[UÚuú]nico', texto, re.IGNORECASE):
                         uf = 'ES'
@@ -151,7 +168,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
 
                     if valor is not None:
                         resultados_pdf.append({'Página': i + 1, 'UF': uf, 'Nº Nota': doc, 'Total a Recolher (R$)': valor})
-
             if not resultados_pdf:
                 st.error("❌ Nenhum valor encontrado no PDF.")
                 st.stop()
