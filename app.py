@@ -135,9 +135,6 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                     # Padrão SP (DARE-SP)
                     elif re.search(r'DARE-SP', texto, re.IGNORECASE) or re.search(r'S[ãa]o\s*Paulo', texto, re.IGNORECASE):
                         uf = 'SP'
-                        
-                        # Para o DARE, a extração de texto pode misturar as colunas.
-                        # A forma segura é caçar todos os "R$ X,XX" da página e pegar o maior (que já embute os juros/multa).
                         valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
                         valores_float = []
                         for v in valores_encontrados:
@@ -201,7 +198,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             df['_uf']     = df[COLUNA_UF].astype(str).str.strip().str.upper()
             df['_nota_str'] = df[COLUNA_NOTA].astype(str).str.strip().str.replace(r'\.0$', '', regex=True).str.lstrip('0')
             
-            # --- O "BEM BOLADO" (ESTRATÉGIAS 1, 2 E 3 INTEGRADAS) ---
+            # --- O "BEM BOLADO" E CLASSIFICAÇÃO DE BANCOS ---
             guias_disponiveis = []
             for i in resultados_pdf:
                 nota_pdf = str(i['Nº Nota']).strip().lstrip('0') if i['Nº Nota'] else ''
@@ -213,6 +210,21 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             paginas_itau_arquivo = []
             paginas_impressao = []
             relatorio_juros = []
+            
+            # Memória da tabelinha de resumo dos bancos
+            resumo_bancos = {
+                "Itau Arquivo": {"Qtd": 0, "Valor": 0.0},
+                "Restantes Itaú": {"Qtd": 0, "Valor": 0.0},
+                "Bradesco": {"Qtd": 0, "Valor": 0.0},
+                "BB": {"Qtd": 0, "Valor": 0.0},
+            }
+
+            def classificar_resumo(uf_alvo):
+                if uf_alvo in BANCO_BRASIL: return "BB"
+                if uf_alvo in BRADESCO: return "Bradesco"
+                if uf_alvo in ITAU_ARQUIVO and uf_alvo in ENTREGA_FISICA: return "Restantes Itaú"
+                if uf_alvo in ITAU_ARQUIVO and uf_alvo not in ENTREGA_FISICA: return "Itau Arquivo"
+                return None
 
             def buscar_guia_inteligente(nota_alvo, uf_alvo, valor_alvo, permite_atraso):
                 for g in guias_disponiveis:
@@ -246,12 +258,18 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 
                 pag_total, juros_total = buscar_guia_inteligente(nota_excel, uf, v_total, lote_atrasado)
                 if pag_total is not None:
+                    val_pago = v_total + juros_total
                     if uf in ENTREGA_FISICA: paginas_impressao.append(pag_total)
                     elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_total)
                     
-                    total_pdf_pago += (v_total + juros_total)
+                    cat = classificar_resumo(uf)
+                    if cat:
+                        resumo_bancos[cat]["Qtd"] += 1
+                        resumo_bancos[cat]["Valor"] += val_pago
+                    
+                    total_pdf_pago += val_pago
                     if juros_total > 0.02:
-                        relatorio_juros.append({"Nota": nota_excel, "UF": uf, "Valor Base": v_total, "Total Pago": v_total + juros_total, "Juros/Multa SEFAZ": juros_total})
+                        relatorio_juros.append({"Nota": nota_excel, "UF": uf, "Valor Base": v_total, "Total Pago": val_pago, "Juros/Multa SEFAZ": juros_total})
                     continue
                 
                 if v2 > 0:
@@ -259,16 +277,30 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                     pag_v2, juros2 = buscar_guia_inteligente(nota_excel, uf, v2, lote_atrasado)
                     
                     if pag_v1 is not None:
+                        val_pago1 = v1 + jr + juros1
                         if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v1)
                         elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v1)
-                        total_pdf_pago += (v1 + jr + juros1)
-                        if juros1 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 1)", "UF": uf, "Valor Base": v1+jr, "Total Pago": v1+jr+juros1, "Juros/Multa SEFAZ": juros1})
+                        
+                        cat = classificar_resumo(uf)
+                        if cat:
+                            resumo_bancos[cat]["Qtd"] += 1
+                            resumo_bancos[cat]["Valor"] += val_pago1
+                            
+                        total_pdf_pago += val_pago1
+                        if juros1 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 1)", "UF": uf, "Valor Base": v1+jr, "Total Pago": val_pago1, "Juros/Multa SEFAZ": juros1})
                             
                     if pag_v2 is not None:
+                        val_pago2 = v2 + juros2
                         if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v2)
                         elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v2)
-                        total_pdf_pago += (v2 + juros2)
-                        if juros2 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 2)", "UF": uf, "Valor Base": v2, "Total Pago": v2+juros2, "Juros/Multa SEFAZ": juros2})
+                        
+                        cat = classificar_resumo(uf)
+                        if cat:
+                            resumo_bancos[cat]["Qtd"] += 1
+                            resumo_bancos[cat]["Valor"] += val_pago2
+                            
+                        total_pdf_pago += val_pago2
+                        if juros2 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 2)", "UF": uf, "Valor Base": v2, "Total Pago": val_pago2, "Juros/Multa SEFAZ": juros2})
 
             # --- GERAÇÃO DOS ARQUIVOS NA MEMÓRIA ---
             reader = PdfReader(io.BytesIO(pdf_bytes))
@@ -293,6 +325,7 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             st.session_state.total_excel_base = total_excel_base
             st.session_state.total_pdf_pago = total_pdf_pago
             st.session_state.relatorio_juros = relatorio_juros
+            st.session_state.resumo_bancos = resumo_bancos
             
             st.session_state.processo_concluido = True
 
@@ -315,6 +348,24 @@ if st.session_state.processo_concluido:
     else:
         col3.metric("Juros/Acréscimos", f"+ R$ {diferenca:,.2f}", delta_color="inverse")
     
+    # --------------------------------------------------------
+    # NOVO BLOCO: TABELINHA DE DETALHAMENTO DOS BANCOS
+    # --------------------------------------------------------
+    st.write("---")
+    st.subheader("📑 Detalhamento por Banco (Físicas e Arquivo)")
+    
+    df_bancos = pd.DataFrame([
+        {"Banco": "Itau Arquivo", "Qtd": st.session_state.resumo_bancos["Itau Arquivo"]["Qtd"], "Valor": st.session_state.resumo_bancos["Itau Arquivo"]["Valor"]},
+        {"Banco": "Restantes Itaú", "Qtd": st.session_state.resumo_bancos["Restantes Itaú"]["Qtd"], "Valor": st.session_state.resumo_bancos["Restantes Itaú"]["Valor"]},
+        {"Banco": "Bradesco", "Qtd": st.session_state.resumo_bancos["Bradesco"]["Qtd"], "Valor": st.session_state.resumo_bancos["Bradesco"]["Valor"]},
+        {"Banco": "BB", "Qtd": st.session_state.resumo_bancos["BB"]["Qtd"], "Valor": st.session_state.resumo_bancos["BB"]["Valor"]}
+    ])
+    
+    st.dataframe(df_bancos.style.format({
+        "Valor": "R$ {:.2f}"
+    }), use_container_width=True, hide_index=True)
+    # --------------------------------------------------------
+
     if len(st.session_state.relatorio_juros) > 0:
         st.warning("⚠️ **ATENÇÃO:** O sistema identificou guias com acréscimos/juros cobrados pela SEFAZ:")
         df_juros_report = pd.DataFrame(st.session_state.relatorio_juros)
@@ -323,7 +374,7 @@ if st.session_state.processo_concluido:
             "Valor Base": "R$ {:.2f}",
             "Total Pago": "R$ {:.2f}",
             "Juros/Multa SEFAZ": "R$ {:.2f}"
-        }), use_container_width=True)
+        }), use_container_width=True, hide_index=True)
 
     st.write("---")
     st.subheader("🗂️ Download dos Lotes Separados")
