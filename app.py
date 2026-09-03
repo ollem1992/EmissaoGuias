@@ -8,7 +8,7 @@ from pypdf import PdfReader, PdfWriter
 # ============================================================
 # 🎨 CONFIGURAÇÃO DA PÁGINA E TEMA DARK
 # ============================================================
-st.set_page_config(page_title="Conferência de GNREs", page_icon="📋", layout="wide")
+st.set_page_config(page_title="Conferência de GNREs", page_icon="📋", layout="centered")
 
 st.markdown("""
     <style>
@@ -115,70 +115,41 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             
             # --- EXTRAÇÃO DO PDF ---
             resultados_pdf = []
-            paginas_sem_leitura = []
             with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                 for i, page in enumerate(pdf.pages):
                     texto = page.extract_text()
-                    if not texto:
-                        paginas_sem_leitura.append(i + 1)
-                        continue
+                    if not texto: continue
 
                     uf, doc, valor = '??', '', None
 
-                    # 1. Padrão Tradicional (GNRE)
-                    m_val_gnre = re.search(r'Total\s+a\s+Recolher[^\d\n]*R?\$?\s*([\d.,]+)', texto, re.IGNORECASE)
+                    # Padrão Tradicional
+                    m_val_gnre = re.search(r'Total\s+a\s+Recolher.*?R\$\s*([\d.,]+)', texto, re.IGNORECASE | re.DOTALL)
                     if m_val_gnre:
                         try: valor = limpar_valor_pdf(m_val_gnre.group(1))
                         except ValueError: pass
-                        
-                        m_uf = re.search(r'Guia Nacional de Recolhimento.*?\n\s*([A-Z]{2})\b', texto, re.DOTALL)
-                        if not m_uf:
-                            m_uf = re.search(r'UF\s*Favorecida[^\n]*\n\s*([A-Z]{2})\b', texto, re.IGNORECASE)
-                        if not m_uf:
-                            m_uf = re.search(r'([A-Z]{2})\s+\d+', texto)
+                        m_uf = re.search(r'Guia Nacional de Recolhimento.*?\n([A-Z]{2})\s+\d{5,}', texto, re.DOTALL)
                         if m_uf: uf = m_uf.group(1)
-                        
-                        # Aceita nota com qualquer quantidade de dígitos (ex: \d+ em vez de fixo \d{5,})
-                        m_doc = re.search(r'N[ºo°]\s*Documento\s*de\s*Origem[^\n]*\n[^\n\d]*?(\d+)', texto, re.IGNORECASE)
-                        if not m_doc:
-                            m_doc = re.search(r'Documento\s*de\s*Origem[^\d]*(\d+)', texto, re.IGNORECASE)
+                        m_doc = re.search(r'N[ºo°]\s+Documento\s+de\s+Origem\n[^\n]+?(\d{5,})\s*$', texto, re.MULTILINE)
                         if m_doc: doc = m_doc.group(1).lstrip('0')
                     
-                    # 2. Padrão SP (DARE-SP)
+                    # Padrão SP (DARE-SP)
                     elif re.search(r'DARE-SP', texto, re.IGNORECASE) or re.search(r'S[ãa]o\s*Paulo', texto, re.IGNORECASE):
                         uf = 'SP'
-                        # Busca prioritária por rótulo específico de valor para não capturar Base de Cálculo
-                        m_val_dare = re.search(r'(?:09\s*-\s*Valor\s*Total|Total\s*a\s*Recolher|Valor\s*Total)[\s:]*R?\$?\s*([\d.,]+)', texto, re.IGNORECASE)
-                        if m_val_dare:
-                            try: valor = limpar_valor_pdf(m_val_dare.group(1))
-                            except: valor = None
-                        
-                        if valor is None:
-                            m_total_gen = re.search(r'\bTotal[\s:]*R?\$?\s*([\d.,]+)', texto, re.IGNORECASE)
-                            if m_total_gen:
-                                try: valor = limpar_valor_pdf(m_total_gen.group(1))
-                                except: pass
-                                
-                        if valor is None:
-                            valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
-                            valores_float = []
-                            for v in valores_encontrados:
-                                try:
-                                    vf = limpar_valor_pdf(v)
-                                    if vf > 0: valores_float.append(vf)
-                                except: pass
-                            if valores_float: 
-                                valor = max(valores_float)
+                        valores_encontrados = re.findall(r'R\$\s*([\d.,]+)', texto)
+                        valores_float = []
+                        for v in valores_encontrados:
+                            try: valores_float.append(limpar_valor_pdf(v))
+                            except: pass
+                        if valores_float: 
+                            valor = max(valores_float)
                             
                         m_doc_dare = re.search(r'NFe?\s*[nN]?[ºo°]?\s*[:]?\s*(\d+)', texto, re.IGNORECASE)
-                        if not m_doc_dare:
-                            m_doc_dare = re.search(r'(?:Documento\s*de\s*Origem|N[ºo°]\s*Doc\.?\s*Origem)[^\d]*(\d+)', texto, re.IGNORECASE)
-                        if m_doc_dare: doc = m_doc_dare.group(1).lstrip('0')
+                        if m_doc_dare: doc = m_doc_dare.group(1)
                     
-                    # 3. Padrão ES (DUA)
+                    # Padrão ES (DUA)
                     elif re.search(r'Esp[íi]rito\s*Santo', texto, re.IGNORECASE) or re.search(r'Documento\s*[UÚuú]nico', texto, re.IGNORECASE):
                         uf = 'ES'
-                        m_val_dua = re.search(r'(?:Total\s*a\s*Recolher|Valor\s*Total|Total|Receita)[\s\n:]*R?\$?[\s\n]*([\d.,]{3,})', texto, re.IGNORECASE)
+                        m_val_dua = re.search(r'(?:Total|Receita)[\s\n]*R?\$?[\s\n]*([\d.,]{3,})', texto, re.IGNORECASE | re.DOTALL)
                         if m_val_dua:
                             try: valor = limpar_valor_pdf(m_val_dua.group(1))
                             except ValueError: pass
@@ -189,25 +160,14 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                                 try: valores_float.append(limpar_valor_pdf(v))
                                 except: pass
                             if valores_float: valor = max(valores_float)
-                        m_doc_dua = re.search(r'(?:NFe?|documento)[^\d]*(\d+)', texto, re.IGNORECASE)
-                        if m_doc_dua: doc = m_doc_dua.group(1).lstrip('0')
-
-                    # 4. Fallback genérico para outros modelos de guia
-                    if valor is None:
-                        m_gen_val = re.search(r'(?:Total\s*a\s*Pagar|Total\s*a\s*Recolher|Valor\s*Total)[\s:]*R?\$?\s*([\d.,]+)', texto, re.IGNORECASE)
-                        if m_gen_val:
-                            try: valor = limpar_valor_pdf(m_gen_val.group(1))
-                            except: pass
-                        m_gen_doc = re.search(r'N[ºo°]?\s*(?:da\s*)?Nota[^\d]*(\d+)', texto, re.IGNORECASE)
-                        if m_gen_doc: doc = m_gen_doc.group(1).lstrip('0')
+                        m_doc_dua = re.search(r'(?:NFe|documento)[^\d]*(\d{5,})', texto, re.IGNORECASE)
+                        if m_doc_dua: doc = m_doc_dua.group(1)
 
                     if valor is not None:
                         resultados_pdf.append({'Página': i + 1, 'UF': uf, 'Nº Nota': doc, 'Total a Recolher (R$)': valor})
-                    else:
-                        paginas_sem_leitura.append(i + 1)
 
             if not resultados_pdf:
-                st.error("❌ Nenhum valor de guia foi identificado no PDF.")
+                st.error("❌ Nenhum valor encontrado no PDF.")
                 st.stop()
 
             # --- LEITURA DO EXCEL ---
@@ -243,26 +203,15 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
             for i in resultados_pdf:
                 nota_pdf = str(i['Nº Nota']).strip().lstrip('0') if i['Nº Nota'] else ''
                 guias_disponiveis.append({
-                    'uf': i['UF'], 
-                    'nota': nota_pdf, 
-                    'valor': i['Total a Recolher (R$)'], 
-                    'pagina': i['Página'] - 1, 
-                    'pagina_num': i['Página'],
-                    'usada': False
+                    'uf': i['UF'], 'nota': nota_pdf, 'valor': i['Total a Recolher (R$)'], 
+                    'pagina': i['Página'] - 1, 'usada': False
                 })
 
-            # Listas de páginas por banco / modalidade
             paginas_itau_arquivo = []
-            paginas_itau_fisico  = []
-            paginas_bradesco     = []
-            paginas_bb           = []
-            paginas_todas_fisicas = []
-            paginas_outros       = []
-
+            paginas_impressao = []
             relatorio_juros = []
-            notas_pendentes = []
             
-            # Memória da tabela de resumo dos bancos
+            # Memória da tabelinha de resumo dos bancos
             resumo_bancos = {
                 "Itau Arquivo": {"Qtd": 0, "Valor": 0.0},
                 "Restantes Itaú": {"Qtd": 0, "Valor": 0.0},
@@ -275,60 +224,27 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 if uf_alvo in BRADESCO: return "Bradesco"
                 if uf_alvo in ITAU_ARQUIVO and uf_alvo in ENTREGA_FISICA: return "Restantes Itaú"
                 if uf_alvo in ITAU_ARQUIVO and uf_alvo not in ENTREGA_FISICA: return "Itau Arquivo"
-                return "Outros"
-
-            def destinar_pagina(uf_alvo, pag_idx, valor_pago):
-                cat = classificar_resumo(uf_alvo)
-                if cat == "BB":
-                    paginas_bb.append(pag_idx)
-                    paginas_todas_fisicas.append(pag_idx)
-                    resumo_bancos["BB"]["Qtd"] += 1
-                    resumo_bancos["BB"]["Valor"] += valor_pago
-                elif cat == "Bradesco":
-                    paginas_bradesco.append(pag_idx)
-                    paginas_todas_fisicas.append(pag_idx)
-                    resumo_bancos["Bradesco"]["Qtd"] += 1
-                    resumo_bancos["Bradesco"]["Valor"] += valor_pago
-                elif cat == "Restantes Itaú":
-                    paginas_itau_fisico.append(pag_idx)
-                    paginas_todas_fisicas.append(pag_idx)
-                    resumo_bancos["Restantes Itaú"]["Qtd"] += 1
-                    resumo_bancos["Restantes Itaú"]["Valor"] += valor_pago
-                elif cat == "Itau Arquivo":
-                    paginas_itau_arquivo.append(pag_idx)
-                    resumo_bancos["Itau Arquivo"]["Qtd"] += 1
-                    resumo_bancos["Itau Arquivo"]["Valor"] += valor_pago
-                else:
-                    paginas_outros.append(pag_idx)
-                    paginas_todas_fisicas.append(pag_idx)
+                return None
 
             def buscar_guia_inteligente(nota_alvo, uf_alvo, valor_alvo, permite_atraso):
-                # 1. Nota exata + Valor exato (tolerância de R$ 0,02)
                 for g in guias_disponiveis:
-                    if not g['usada'] and g['nota'] and g['nota'] == nota_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
-                        g['usada'] = True
-                        return g['pagina'], 0.0
+                    if not g['usada'] and g['nota'] == nota_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
+                        g['usada'] = True; return g['pagina'], 0.0
                 
-                # 2. Nota exata + Valor com acréscimo/juros SEFAZ
                 for g in guias_disponiveis:
-                    if not g['usada'] and g['nota'] and g['nota'] == nota_alvo and g['valor'] > valor_alvo + 0.02:
+                    if not g['usada'] and g['nota'] == nota_alvo and g['valor'] > valor_alvo + 0.02:
                         juros = g['valor'] - valor_alvo
-                        g['usada'] = True
-                        return g['pagina'], juros
+                        g['usada'] = True; return g['pagina'], juros
                 
-                # 3. Fallback: se a nota não foi lida do PDF mas a UF e o valor batem exatamente
                 for g in guias_disponiveis:
-                    if not g['usada'] and (not g['nota'] or g['nota'] == nota_alvo) and g['uf'] == uf_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
-                        g['usada'] = True
-                        return g['pagina'], 0.0
+                    if not g['usada'] and g['uf'] == uf_alvo and abs(g['valor'] - valor_alvo) <= 0.02:
+                        g['usada'] = True; return g['pagina'], 0.0
                 
-                # 4. Modo analista (lote atrasado com acréscimo de até 20% na UF)
                 if permite_atraso:
                     for g in guias_disponiveis:
-                        if not g['usada'] and (not g['nota'] or g['nota'] == nota_alvo) and g['uf'] == uf_alvo and (valor_alvo - 0.02) <= g['valor'] <= (valor_alvo * 1.20):
+                        if not g['usada'] and g['uf'] == uf_alvo and (valor_alvo - 0.02) <= g['valor'] <= (valor_alvo * 1.20):
                             juros = g['valor'] - valor_alvo
-                            g['usada'] = True
-                            return g['pagina'], juros
+                            g['usada'] = True; return g['pagina'], juros
                 
                 return None, 0.0
 
@@ -340,111 +256,76 @@ if st.button("🚀 INICIAR CONFERÊNCIA E SEPARAÇÃO", use_container_width=True
                 nota_excel = row['_nota_str']
                 total_excel_base += v_total
                 
-                # Tentativa 1: Guia com valor total consolidado
                 pag_total, juros_total = buscar_guia_inteligente(nota_excel, uf, v_total, lote_atrasado)
                 if pag_total is not None:
                     val_pago = v_total + juros_total
-                    destinar_pagina(uf, pag_total, val_pago)
+                    if uf in ENTREGA_FISICA: paginas_impressao.append(pag_total)
+                    elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_total)
+                    
+                    cat = classificar_resumo(uf)
+                    if cat:
+                        resumo_bancos[cat]["Qtd"] += 1
+                        resumo_bancos[cat]["Valor"] += val_pago
+                    
                     total_pdf_pago += val_pago
                     if juros_total > 0.02:
-                        relatorio_juros.append({
-                            "Nota": nota_excel, "UF": uf, "Valor Base": v_total, 
-                            "Total Pago": val_pago, "Juros/Multa SEFAZ": juros_total
-                        })
+                        relatorio_juros.append({"Nota": nota_excel, "UF": uf, "Valor Base": v_total, "Total Pago": val_pago, "Juros/Multa SEFAZ": juros_total})
                     continue
                 
-                # Tentativa 2: Guias desmembradas (V1 + V2)
                 if v2 > 0:
                     pag_v1, juros1 = buscar_guia_inteligente(nota_excel, uf, v1 + jr, lote_atrasado)
                     pag_v2, juros2 = buscar_guia_inteligente(nota_excel, uf, v2, lote_atrasado)
                     
                     if pag_v1 is not None:
                         val_pago1 = v1 + jr + juros1
-                        destinar_pagina(uf, pag_v1, val_pago1)
+                        if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v1)
+                        elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v1)
+                        
+                        cat = classificar_resumo(uf)
+                        if cat:
+                            resumo_bancos[cat]["Qtd"] += 1
+                            resumo_bancos[cat]["Valor"] += val_pago1
+                            
                         total_pdf_pago += val_pago1
-                        if juros1 > 0.02:
-                            relatorio_juros.append({
-                                "Nota": f"{nota_excel} (Guia 1)", "UF": uf, 
-                                "Valor Base": v1 + jr, "Total Pago": val_pago1, "Juros/Multa SEFAZ": juros1
-                            })
-                    else:
-                        notas_pendentes.append({
-                            "Nota": f"{nota_excel} (Guia 1)", "UF": uf, 
-                            "Valor Esperado": v1 + jr, "Motivo": "Guia 1 não localizada no PDF"
-                        })
+                        if juros1 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 1)", "UF": uf, "Valor Base": v1+jr, "Total Pago": val_pago1, "Juros/Multa SEFAZ": juros1})
                             
                     if pag_v2 is not None:
                         val_pago2 = v2 + juros2
-                        destinar_pagina(uf, pag_v2, val_pago2)
+                        if uf in ENTREGA_FISICA: paginas_impressao.append(pag_v2)
+                        elif uf in ITAU_ARQUIVO: paginas_itau_arquivo.append(pag_v2)
+                        
+                        cat = classificar_resumo(uf)
+                        if cat:
+                            resumo_bancos[cat]["Qtd"] += 1
+                            resumo_bancos[cat]["Valor"] += val_pago2
+                            
                         total_pdf_pago += val_pago2
-                        if juros2 > 0.02:
-                            relatorio_juros.append({
-                                "Nota": f"{nota_excel} (Guia 2)", "UF": uf, 
-                                "Valor Base": v2, "Total Pago": val_pago2, "Juros/Multa SEFAZ": juros2
-                            })
-                    else:
-                        notas_pendentes.append({
-                            "Nota": f"{nota_excel} (Guia 2)", "UF": uf, 
-                            "Valor Esperado": v2, "Motivo": "Guia 2 não localizada no PDF"
-                        })
-                else:
-                    notas_pendentes.append({
-                        "Nota": nota_excel, "UF": uf, 
-                        "Valor Esperado": v_total, "Motivo": "Guia não localizada no PDF"
-                    })
+                        if juros2 > 0.02: relatorio_juros.append({"Nota": f"{nota_excel} (Guia 2)", "UF": uf, "Valor Base": v2, "Total Pago": val_pago2, "Juros/Multa SEFAZ": juros2})
 
-            # --- IDENTIFICAÇÃO DE GUIAS ÓRFÃS (SOBRARAM NO PDF) ---
-            guias_orfas = []
-            for g in guias_disponiveis:
-                if not g['usada']:
-                    guias_orfas.append({
-                        "Página": g['pagina_num'],
-                        "UF no PDF": g['uf'],
-                        "Nota no PDF": g['nota'] if g['nota'] else "(Não detectada)",
-                        "Valor Guia": g['valor']
-                    })
-
-            for p_num in paginas_sem_leitura:
-                guias_orfas.append({
-                    "Página": p_num,
-                    "UF no PDF": "(Não identificada)",
-                    "Nota no PDF": "(Texto não extraível)",
-                    "Valor Guia": 0.0
-                })
-
-            guias_orfas.sort(key=lambda x: x['Página'])
-
-            # --- GERAÇÃO DOS ARQUIVOS PDF NA MEMÓRIA ---
+            # --- GERAÇÃO DOS ARQUIVOS NA MEMÓRIA ---
             reader = PdfReader(io.BytesIO(pdf_bytes))
+            
+            pdf_itau_bytes = io.BytesIO()
+            if paginas_itau_arquivo:
+                writer_itau = PdfWriter()
+                for pag in paginas_itau_arquivo: writer_itau.add_page(reader.pages[pag])
+                writer_itau.write(pdf_itau_bytes)
+                
+            pdf_imp_bytes = io.BytesIO()
+            if paginas_impressao:
+                writer_imp = PdfWriter()
+                for pag in paginas_impressao: writer_imp.add_page(reader.pages[pag])
+                writer_imp.write(pdf_imp_bytes)
 
-            def gerar_pdf_bytes(lista_paginas):
-                if not lista_paginas:
-                    return None
-                writer = PdfWriter()
-                for pag in lista_paginas:
-                    writer.add_page(reader.pages[pag])
-                buf = io.BytesIO()
-                writer.write(buf)
-                return buf.getvalue()
-
-            st.session_state.pdf_itau_arquivo = gerar_pdf_bytes(paginas_itau_arquivo)
-            st.session_state.pdf_itau_fisico  = gerar_pdf_bytes(paginas_itau_fisico)
-            st.session_state.pdf_bradesco     = gerar_pdf_bytes(paginas_bradesco)
-            st.session_state.pdf_bb           = gerar_pdf_bytes(paginas_bb)
-            st.session_state.pdf_todas_fisicas = gerar_pdf_bytes(paginas_todas_fisicas)
-
-            st.session_state.qtd_itau_arquivo = len(paginas_itau_arquivo)
-            st.session_state.qtd_itau_fisico  = len(paginas_itau_fisico)
-            st.session_state.qtd_bradesco     = len(paginas_bradesco)
-            st.session_state.qtd_bb           = len(paginas_bb)
-            st.session_state.qtd_todas_fisicas = len(paginas_todas_fisicas)
+            st.session_state.pdf_itau = pdf_itau_bytes.getvalue() if paginas_itau_arquivo else None
+            st.session_state.pdf_imp = pdf_imp_bytes.getvalue() if paginas_impressao else None
+            st.session_state.qtd_itau = len(paginas_itau_arquivo)
+            st.session_state.qtd_imp = len(paginas_impressao)
             
             st.session_state.total_excel_base = total_excel_base
-            st.session_state.total_pdf_pago   = total_pdf_pago
-            st.session_state.relatorio_juros  = relatorio_juros
-            st.session_state.resumo_bancos    = resumo_bancos
-            st.session_state.notas_pendentes  = notas_pendentes
-            st.session_state.guias_orfas      = guias_orfas
+            st.session_state.total_pdf_pago = total_pdf_pago
+            st.session_state.relatorio_juros = relatorio_juros
+            st.session_state.resumo_bancos = resumo_bancos
             
             st.session_state.processo_concluido = True
 
@@ -463,126 +344,61 @@ if st.session_state.processo_concluido:
     diferenca = st.session_state.total_pdf_pago - st.session_state.total_excel_base
     if abs(diferenca) < 0.02:
         col3.metric("Juros/Acréscimos", "R$ 0,00", delta_color="off")
-        st.success("✅ Perfeito! Todos os valores do PDF bateram com a planilha base.")
+        st.success("✅ Perfeito! Todos os valores do PDF bateram exatamente com a planilha base.")
     else:
         col3.metric("Juros/Acréscimos", f"+ R$ {diferenca:,.2f}", delta_color="inverse")
     
     # --------------------------------------------------------
-    # TABELINHA DE DETALHAMENTO DOS BANCOS
+    # NOVO BLOCO: TABELINHA DE DETALHAMENTO DOS BANCOS
     # --------------------------------------------------------
     st.write("---")
     st.subheader("📑 Detalhamento por Banco (Físicas e Arquivo)")
     
     df_bancos = pd.DataFrame([
         {"Banco": "Itau Arquivo", "Qtd": st.session_state.resumo_bancos["Itau Arquivo"]["Qtd"], "Valor": st.session_state.resumo_bancos["Itau Arquivo"]["Valor"]},
-        {"Banco": "Restantes Itaú (Físicas)", "Qtd": st.session_state.resumo_bancos["Restantes Itaú"]["Qtd"], "Valor": st.session_state.resumo_bancos["Restantes Itaú"]["Valor"]},
+        {"Banco": "Restantes Itaú", "Qtd": st.session_state.resumo_bancos["Restantes Itaú"]["Qtd"], "Valor": st.session_state.resumo_bancos["Restantes Itaú"]["Valor"]},
         {"Banco": "Bradesco", "Qtd": st.session_state.resumo_bancos["Bradesco"]["Qtd"], "Valor": st.session_state.resumo_bancos["Bradesco"]["Valor"]},
-        {"Banco": "Banco do Brasil", "Qtd": st.session_state.resumo_bancos["BB"]["Qtd"], "Valor": st.session_state.resumo_bancos["BB"]["Valor"]}
+        {"Banco": "BB", "Qtd": st.session_state.resumo_bancos["BB"]["Qtd"], "Valor": st.session_state.resumo_bancos["BB"]["Valor"]}
     ])
     
     st.dataframe(df_bancos.style.format({
         "Valor": "R$ {:.2f}"
     }), use_container_width=True, hide_index=True)
-
     # --------------------------------------------------------
-    # PAINEL DE AUDITORIA E CONFORMIDADE (NOTAS PENDENTES / ÓRFÃS / JUROS)
-    # --------------------------------------------------------
-    st.write("---")
-    st.subheader("🛡️ Painel de Auditoria e Conformidade")
 
-    total_pendentes = len(st.session_state.notas_pendentes)
-    total_orfas     = len(st.session_state.guias_orfas)
-    total_juros     = len(st.session_state.relatorio_juros)
-
-    if total_pendentes == 0 and total_orfas == 0:
-        st.success("🎉 **Lote 100% Conciliado!** Todas as notas da planilha foram localizadas e nenhuma guia sobrou no PDF.")
-    
-    if total_pendentes > 0:
-        st.error(f"❌ **{total_pendentes} Nota(s) da Planilha NÃO encontrada(s) no PDF:**")
-        df_pendentes = pd.DataFrame(st.session_state.notas_pendentes)
-        st.dataframe(df_pendentes.style.format({
-            "Valor Esperado": "R$ {:.2f}"
-        }), use_container_width=True, hide_index=True)
-
-    if total_orfas > 0:
-        st.warning(f"⚠️ **{total_orfas} Guia(s) no PDF NÃO associada(s) à Planilha (Guias Órfãs):**")
-        df_orfas = pd.DataFrame(st.session_state.guias_orfas)
-        st.dataframe(df_orfas.style.format({
-            "Valor Guia": "R$ {:.2f}"
-        }), use_container_width=True, hide_index=True)
-
-    if total_juros > 0:
-        st.info(f"ℹ️ **{total_juros} Guia(s) identificada(s) com acréscimos/juros da SEFAZ:**")
+    if len(st.session_state.relatorio_juros) > 0:
+        st.warning("⚠️ **ATENÇÃO:** O sistema identificou guias com acréscimos/juros cobrados pela SEFAZ:")
         df_juros_report = pd.DataFrame(st.session_state.relatorio_juros)
+        
         st.dataframe(df_juros_report.style.format({
             "Valor Base": "R$ {:.2f}",
             "Total Pago": "R$ {:.2f}",
             "Juros/Multa SEFAZ": "R$ {:.2f}"
         }), use_container_width=True, hide_index=True)
 
-    # --------------------------------------------------------
-    # DOWNLOAD DOS LOTES SEPARADOS POR BANCO
-    # --------------------------------------------------------
     st.write("---")
-    st.subheader("🗂️ Download dos Lotes Separados por Banco")
+    st.subheader("🗂️ Download dos Lotes Separados")
     
-    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+    col_btn1, col_btn2 = st.columns(2)
     
-    # 1. Itaú Arquivo
-    if st.session_state.qtd_itau_arquivo > 0:
-        col_b1.download_button(
-            label=f"📥 ITAÚ ARQUIVO\n({st.session_state.qtd_itau_arquivo} pág)", 
-            data=st.session_state.pdf_itau_arquivo, 
+    if st.session_state.qtd_itau > 0:
+        col_btn1.download_button(
+            label=f"📥 BAIXAR GUIAS ITAÚ ({st.session_state.qtd_itau} pág)", 
+            data=st.session_state.pdf_itau, 
             file_name="guias_itau_arquivo.pdf", 
             mime="application/pdf", 
             use_container_width=True
         )
     else:
-        col_b1.info("Sem guias Itaú Arquivo.")
+        col_btn1.info("Nenhuma guia Itaú Arquivo neste lote.")
 
-    # 2. Itaú Físico
-    if st.session_state.qtd_itau_fisico > 0:
-        col_b2.download_button(
-            label=f"📥 ITAÚ FÍSICO\n({st.session_state.qtd_itau_fisico} pág)", 
-            data=st.session_state.pdf_itau_fisico, 
-            file_name="guias_itau_fisica.pdf", 
+    if st.session_state.qtd_imp > 0:
+        col_btn2.download_button(
+            label=f"📥 BAIXAR GUIAS FÍSICAS ({st.session_state.qtd_imp} pág)", 
+            data=st.session_state.pdf_imp, 
+            file_name="guias_impressao_fisica.pdf", 
             mime="application/pdf", 
             use_container_width=True
         )
     else:
-        col_b2.info("Sem guias Itaú Físico.")
-
-    # 3. Bradesco
-    if st.session_state.qtd_bradesco > 0:
-        col_b3.download_button(
-            label=f"📥 BRADESCO\n({st.session_state.qtd_bradesco} pág)", 
-            data=st.session_state.pdf_bradesco, 
-            file_name="guias_bradesco.pdf", 
-            mime="application/pdf", 
-            use_container_width=True
-        )
-    else:
-        col_b3.info("Sem guias Bradesco.")
-
-    # 4. Banco do Brasil
-    if st.session_state.qtd_bb > 0:
-        col_b4.download_button(
-            label=f"📥 BANCO DO BRASIL\n({st.session_state.qtd_bb} pág)", 
-            data=st.session_state.pdf_bb, 
-            file_name="guias_banco_brasil.pdf", 
-            mime="application/pdf", 
-            use_container_width=True
-        )
-    else:
-        col_b4.info("Sem guias BB.")
-
-    # Opção Unificada de Impressão Física
-    if st.session_state.qtd_todas_fisicas > 0:
-        st.write("")
-        st.download_button(
-            label=f"🖨️ BAIXAR TODAS AS GUIAS FÍSICAS UNIFICADAS ({st.session_state.qtd_todas_fisicas} pág)", 
-            data=st.session_state.pdf_todas_fisicas, 
-            file_name="guias_todas_impressao_fisica.pdf", 
-            mime="application/pdf", 
-            use_container_width=True
-        )
+        col_btn2.info("Nenhuma guia de Impressão Física neste lote.")
